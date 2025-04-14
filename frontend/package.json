@@ -10,12 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tiptap/extension-character-count": "^2.11.7",
     "@tiptap/extension-code": "^2.11.7",
     "@tiptap/extension-code-block": "^2.11.7",
+    "@tiptap/extension-code-block-lowlight": "^2.11.7",
+    "@tiptap/extension-color": "^2.11.7",
     "@tiptap/extension-document": "^2.11.7",
     "@tiptap/extension-highlight": "^2.11.7",
     "@tiptap/extension-image": "^2.11.7",
     "@tiptap/extension-link": "^2.11.7",
+    "@tiptap/extension-list-item": "^2.11.7",
+    "@tiptap/extension-placeholder": "^2.11.7",
     "@tiptap/extension-task-item": "^2.11.7",
     "@tiptap/extension-task-list": "^2.11.7",
     "@tiptap/extension-text-align": "^2.11.7",
@@ -25,11 +30,17 @@
     "@tiptap/react": "^2.11.7",
     "@tiptap/starter-kit": "^2.11.7",
     "axios": "^1.8.4",
+    "lodash": "^4.17.21",
+    "lowlight": "^3.3.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "remixicon": "^4.6.0",
+    "striptags": "^3.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
+    "@types/lodash": "^4.17.16",
+    "@types/node": "^22.14.0",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",

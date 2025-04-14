@@ -11,6 +11,7 @@ import TaskItem from '@tiptap/extension-task-item';
 import TextAlign from '@tiptap/extension-text-align';
 import Code from '@tiptap/extension-code';
 import Link from '@tiptap/extension-link';
+import Placeholder from '@tiptap/extension-placeholder';
 import TrashIcon from './assets/icons/trash.svg';
 import PlusIcon from './assets/icons/plus.svg';
 import FirstCapIcon from './assets/icons/FirstCap.svg';
@@ -21,6 +22,13 @@ import UnderlineIcon from './assets/icons/Underline.svg';
 import StrikeThroughIcon from './assets/icons/StrikeThrough.svg';
 import ChecklistIcon from './assets/icons/Checklist.svg';
 import BulletPointsIcon from './assets/icons/BulletPoint.svg';
+import remixiconUrl from 'remixicon/fonts/remixicon.symbol.svg';
+import striptags from 'striptags';
+
+// Utility function to strip HTML tags
+const stripHtml = (html: string): string => {
+  return striptags(html);
+};
 
 interface Note {
   id: number;
@@ -64,6 +72,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
       StarterKit.configure({
         bulletList: { HTMLAttributes: { class: 'list-disc pl-5' } },
         orderedList: { HTMLAttributes: { class: 'list-decimal pl-5' } },
+        heading: { levels: [1, 2, 3, 4] },
       }),
       Image,
       Underline,
@@ -74,6 +83,9 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Code,
       Link,
+      Placeholder.configure({
+        placeholder: 'Start typing...',
+      }),
     ],
     content: '',
     onUpdate: ({ editor }) => {
@@ -81,12 +93,11 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
       setNewContent(content);
       handleContentChange(content);
     },
-    onFocus: () => editor?.commands.focus(),
   });
 
   // Load notes on mount
   useEffect(() => {
-    fetchNotes().then(setNotes);
+    fetchNotes().then(setNotes).catch((error) => console.error('Failed to fetch notes:', error));
   }, [fetchNotes]);
 
   // Update editor content when selected note changes
@@ -97,7 +108,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
       } else {
         const note = notes.find((n) => n.id === selectedNoteId);
         if (note) {
-          editor.commands.setContent(note.content);
+          editor.commands.setContent(note.content, false, { preserveWhitespace: 'full' });
           editor.commands.focus();
         }
       }
@@ -116,16 +127,16 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
   const filteredNotes = notes
     .filter(
       (note) =>
-        note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        note.content.toLowerCase().includes(searchQuery.toLowerCase())
+        stripHtml(note.title).toLowerCase().includes(searchQuery.toLowerCase()) ||
+        stripHtml(note.content).toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
   // Add a new note
   const addNote = useCallback(async () => {
     if (!token || !newContent.trim()) return;
-    const words = newContent.trim().split(/\s+/);
-    const title = currentTitle.trim() || words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : '');
+    const words = stripHtml(newContent).trim().split(/\s+/);
+    const title = stripHtml(currentTitle).trim() || words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : '');
     try {
       const response = await axios.post<Note>(
         'https://localhost:3002/notes',
@@ -185,8 +196,8 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
   // Save edits to an existing note
   const saveEdit = useCallback(async () => {
     if (!token || typeof selectedNoteId !== 'number') return;
-    const contentToSave = newContent; // Keep full HTML, no trimming
-    const titleToSave = contentToSave === '' ? '' : currentTitle;
+    const contentToSave = newContent;
+    const titleToSave = contentToSave === '' ? '' : stripHtml(currentTitle);
     if (contentToSave === '' && tempDeletedNote) {
       setTempDeletedNote(null);
       setSelectedNoteId(null);
@@ -234,7 +245,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
       if (newContent.trim() === '') {
         setCurrentTitle('');
       } else {
-        const words = newContent.trim().split(/\s+/);
+        const words = stripHtml(newContent).trim().split(/\s+/);
         setCurrentTitle(words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : ''));
       }
     }
@@ -246,12 +257,21 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
     const timer = setTimeout(() => {
       if (selectedNoteId === null) {
         addNote();
-      } else if (typeof selectedNoteId === 'number' && (newContent !== originalContent || currentTitle !== originalTitle)) {
+      } else if (
+        typeof selectedNoteId === 'number' &&
+        (newContent !== originalContent || stripHtml(currentTitle) !== originalTitle)
+      ) {
         saveEdit();
+        // Update editor content only if necessary, preserving cursor
+        if (editor && editor.getHTML() !== newContent) {
+          const { from, to } = editor.state.selection;
+          editor.commands.setContent(newContent, false, { preserveWhitespace: 'full' });
+          editor.commands.setTextSelection({ from, to });
+        }
       }
     }, 2000);
     return () => clearTimeout(timer);
-  }, [newContent, currentTitle, selectedNoteId, token, originalContent, originalTitle, addNote, saveEdit]);
+  }, [newContent, currentTitle, selectedNoteId, token, originalContent, originalTitle, addNote, saveEdit, editor]);
 
   // Handle context menu
   const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>, noteId: number) => {
@@ -278,7 +298,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
         const paddingTop = parseFloat(styles.paddingTop);
         const paddingRight = parseFloat(styles.paddingRight);
         const paddingBottom = parseFloat(styles.paddingBottom);
-        const taskbarWidth = 400;
+        const taskbarWidth = 600;
         const taskbarHeight = 32;
         const boundaryOffset = 5;
 
@@ -322,11 +342,11 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
         const container = containerRef.current;
         const containerRect = container.getBoundingClientRect();
         const styles = window.getComputedStyle(container);
-        const paddingLeft = parseFloat(styles.paddingLeft);
-        const paddingTop = parseFloat(styles.paddingTop);
-        const paddingRight = parseFloat(styles.paddingRight);
-        const paddingBottom = parseFloat(styles.paddingBottom);
-        const taskbarWidth = 400;
+        const paddingLeft = parseFloat(styles.paddingLeft) || 0;
+        const paddingTop = parseFloat(styles.paddingTop) || 0;
+        const paddingRight = parseFloat(styles.paddingRight) || 0;
+        const paddingBottom = parseFloat(styles.paddingBottom) || 0;
+        const taskbarWidth = 600;
         const taskbarHeight = 32;
         const boundaryOffset = 10;
 
@@ -358,7 +378,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
     };
   }, [isDragging, dragOffset]);
 
-  // Formatting functions adapted for Tiptap
+  // Formatting functions
   const capitalizeFirst = () => {
     if (!editor) return;
     const { from, to } = editor.state.selection;
@@ -399,7 +419,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
     editor.commands.focus();
   };
 
-  const applyTextFormat = (format: 'bold' | 'italic' | 'underline' | 'strike') => {
+  const applyTextFormat = (format: 'bold' | 'italic' | 'underline' | 'strike' | 'highlight' | 'code') => {
     if (editor) {
       editor.chain().focus().toggleMark(format).run();
     }
@@ -420,6 +440,21 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
       editor.chain().focus().liftListItem('taskItem').setParagraph().run();
     } else {
       editor.chain().focus().toggleTaskList().run();
+    }
+  };
+
+  const setTextAlignment = (alignment: 'left' | 'center' | 'right') => {
+    if (editor) {
+      editor.chain().focus().setTextAlign(alignment).run();
+    }
+  };
+
+  const setHeadingLevel = (level: number | null) => {
+    if (!editor) return;
+    if (level === null) {
+      editor.chain().focus().setParagraph().run();
+    } else {
+      editor.chain().focus().toggleHeading({ level: level as 1 | 2 | 3 | 4 }).run();
     }
   };
 
@@ -460,8 +495,8 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
             overflow: hidden;
           }
           .editor-input {
-            height: calc(100% - 20px);
-            width: calc(100% - 20px);
+            height: 100%;
+            width: 100%;
             padding: 10px;
             overflow-y: auto;
             overflow-x: auto;
@@ -474,7 +509,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
           .editor-input::-webkit-scrollbar-track { background: transparent; }
           .editor-input::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
           .editor-input::-webkit-scrollbar-thumb:hover { background: #555; }
-          select.no-arrow { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
+          select.no-arrow { -webkit-appearance: none; -moz-appearance: none; appearance: none; text-align: center; }
           .editor-input ul { color: white; margin: 0; padding-left: 20px; }
           .editor-input ul li { color: white; margin: 0; }
           .editor-input ul li::marker { color: white; }
@@ -495,6 +530,18 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
           .editor-input li[data-checked="true"]::before { background-color: white; }
           .editor-input u { color: white; text-decoration: underline white; }
           .editor-input s { color: white; text-decoration: line-through white; }
+          .editor-input .ProseMirror::before { color: #6b7280; }
+          .editor-input .ProseMirror-focused { border: none !important; outline: none !important; }
+          .editor-input h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; }
+          .editor-input h2 { font-size: 1.5em; font-weight: bold; margin: 0.83em 0; }
+          .editor-input h3 { font-size: 1.17em; font-weight: bold; margin: 1em 0; }
+          .editor-input h4 { font-size: 1em; font-weight: bold; margin: 1.33em 0; }
+          .editor-input .ProseMirror code {
+            font-family: monospace;
+            color: #787878;
+            padding: 2px 4px;
+          }
+          .taskbar-button.active { outline: 1px solid #5062E7; border-radius: 2px; }
         `}
       </style>
       <div className="w-[300px] flex flex-col flex-shrink-0 h-full relative">
@@ -548,8 +595,8 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
                 } transition-all duration-300 rounded-[4px]`}
               ></div>
               <div className={`transition-all duration-300 ${note.id === selectedNoteId ? 'ml-[7px]' : 'ml-0'}`}>
-                <strong className="text-white note-title">{note.title || '(Untitled)'}</strong>
-                <p className="text-gray-400 note-content">{note.content.replace(/<[^>]+>/g, '')}</p>
+                <strong className="text-white note-title">{stripHtml(note.title) || '(Untitled)'}</strong>
+                <p className="text-gray-400 note-content">{stripHtml(note.content)}</p>
               </div>
               <span className="absolute bottom-1 right-2 text-[10px] text-gray-500">{formatDate(note.updated_at)}</span>
             </div>
@@ -580,20 +627,19 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
             editor={editor}
             className="editor-input bg-gradient-to-b from-[#191919] to-[#141414] border border-[#5062E7] rounded-[15px] text-white focus:border-[#5062E7] focus:outline-none"
             style={{ position: 'relative', zIndex: 1 }}
+            onClick={() => {
+              if (editor) {
+                editor.commands.focus();
+              }
+            }}
           />
-          <div
-            className="absolute top-10 left-10 text-gray-500 pointer-events-none"
-            style={{ zIndex: 2, display: newContent ? 'none' : 'block' }}
-          >
-            Start typing...
-          </div>
           <div
             ref={taskbarRef}
             style={{
               position: 'absolute',
               left: `${taskbarPosition.x}px`,
               top: `${taskbarPosition.y}px`,
-              width: '400px',
+              width: '600px',
               height: '32px',
               borderRadius: '15px',
               backgroundColor: '#252525',
@@ -609,6 +655,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
             }}
             onMouseDown={handleMouseDown}
           >
+            {/* Capitalization Section */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
                 style={{ width: '27px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
@@ -618,7 +665,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
                 <img src={FirstCapIcon} alt="First Cap" style={{ width: '27px', height: '16px', pointerEvents: 'none' }} />
               </button>
               <button
-                style={{ width: '28px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                style={{ width: '28px', height: '16px', padding: '0', border: 'none', background: 'transparent', cursor: 'pointer' }}
                 onClick={capitalizeAll}
                 onMouseDown={(e) => e.stopPropagation()}
               >
@@ -627,7 +674,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
               <select
                 className="no-arrow"
                 style={{
-                  width: '28px',
+                  width: '30px',
                   height: '25px',
                   backgroundColor: '#171717',
                   borderRadius: '6px',
@@ -635,16 +682,26 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
                   border: 'none',
                   outline: 'none',
                   cursor: 'pointer',
-                  marginLeft: '4px',
+                  textAlign: 'center',
+                }}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setHeadingLevel(value === '' ? null : Number(value));
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                <option value="">...</option>
+                <option value="">P</option>
+                <option value="1">H1</option>
+                <option value="2">H2</option>
+                <option value="3">H3</option>
+                <option value="4">H4</option>
               </select>
             </div>
             <div style={{ width: '1px', height: '20px', backgroundColor: '#888', margin: '0 8px' }}></div>
+            {/* Text Formatting Section */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
+                className={`taskbar-button ${editor?.isActive('bold') ? 'active' : ''}`}
                 style={{ width: '19px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
                 onClick={() => applyTextFormat('bold')}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -652,6 +709,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
                 <img src={BoldIcon} alt="Bold" style={{ width: '19px', height: '16px', pointerEvents: 'none' }} />
               </button>
               <button
+                className={`taskbar-button ${editor?.isActive('italic') ? 'active' : ''}`}
                 style={{ width: '18px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
                 onClick={() => applyTextFormat('italic')}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -659,6 +717,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
                 <img src={ItalicIcon} alt="Italic" style={{ width: '18px', height: '16px', pointerEvents: 'none' }} />
               </button>
               <button
+                className={`taskbar-button ${editor?.isActive('underline') ? 'active' : ''}`}
                 style={{ width: '16px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
                 onClick={() => applyTextFormat('underline')}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -666,16 +725,29 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
                 <img src={UnderlineIcon} alt="Underline" style={{ width: '16px', height: '16px', pointerEvents: 'none' }} />
               </button>
               <button
+                className={`taskbar-button ${editor?.isActive('strike') ? 'active' : ''}`}
                 style={{ width: '36px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
                 onClick={() => applyTextFormat('strike')}
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 <img src={StrikeThroughIcon} alt="Strike Through" style={{ width: '36px', height: '16px', pointerEvents: 'none' }} />
               </button>
+              <button
+                className={`taskbar-button ${editor?.isActive('highlight') ? 'active' : ''}`}
+                style={{ width: '16px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                onClick={() => applyTextFormat('highlight')}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <svg width="16" height="16" style={{ pointerEvents: 'none' }}>
+                  <use href={`${remixiconUrl}#ri-mark-pen-line`} fill="#FFFFFF" />
+                </svg>
+              </button>
             </div>
             <div style={{ width: '1px', height: '20px', backgroundColor: '#888', margin: '0 8px' }}></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {/* List Section */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
+                className={`taskbar-button ${editor?.isActive('bulletList') ? 'active' : ''}`}
                 style={{ width: '16px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
                 onClick={toggleBulletList}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -683,11 +755,60 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
                 <img src={BulletPointsIcon} alt="Bullet Points" style={{ width: '16px', height: '16px', pointerEvents: 'none' }} />
               </button>
               <button
+                className={`taskbar-button ${editor?.isActive('taskList') ? 'active' : ''}`}
                 style={{ width: '16px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
                 onClick={toggleChecklist}
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 <img src={ChecklistIcon} alt="Checklist" style={{ width: '16px', height: '16px', pointerEvents: 'none' }} />
+              </button>
+            </div>
+            <div style={{ width: '1px', height: '20px', backgroundColor: '#888', margin: '0 8px' }}></div>
+            {/* Alignment Section */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                className={`taskbar-button ${editor?.isActive('textAlign', { align: 'left' }) ? 'active' : ''}`}
+                style={{ width: '16px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                onClick={() => setTextAlignment('left')}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <svg width="16" height="16" style={{ pointerEvents: 'none' }}>
+                  <use href={`${remixiconUrl}#ri-align-left`} fill="#FFFFFF" />
+                </svg>
+              </button>
+              <button
+                className={`taskbar-button ${editor?.isActive('textAlign', { align: 'center' }) ? 'active' : ''}`}
+                style={{ width: '16px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                onClick={() => setTextAlignment('center')}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <svg width="16" height="16" style={{ pointerEvents: 'none' }}>
+                  <use href={`${remixiconUrl}#ri-align-center`} fill="#FFFFFF" />
+                </svg>
+              </button>
+              <button
+                className={`taskbar-button ${editor?.isActive('textAlign', { align: 'right' }) ? 'active' : ''}`}
+                style={{ width: '16px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                onClick={() => setTextAlignment('right')}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <svg width="16" height="16" style={{ pointerEvents: 'none' }}>
+                  <use href={`${remixiconUrl}#ri-align-right`} fill="#FFFFFF" />
+                </svg>
+              </button>
+            </div>
+            <div style={{ width: '1px', height: '20px', backgroundColor: '#888', margin: '0 8px' }}></div>
+            {/* Code Section */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                className={`taskbar-button ${editor?.isActive('code') ? 'active' : ''}`}
+                style={{ width: '16px', height: '16px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                onClick={() => applyTextFormat('code')}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <svg width="16" height="16" style={{ pointerEvents: 'none' }}>
+                  <use href={`${remixiconUrl}#ri-code-view`} fill="#FFFFFF" />
+                </svg>
               </button>
             </div>
           </div>
