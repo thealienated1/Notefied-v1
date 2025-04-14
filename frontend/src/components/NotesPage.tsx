@@ -105,15 +105,49 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
     if (editor) {
       if (selectedNoteId === null) {
         editor.commands.setContent('');
+        setCurrentTitle('');
       } else {
         const note = notes.find((n) => n.id === selectedNoteId);
         if (note) {
           editor.commands.setContent(note.content, false, { preserveWhitespace: 'full' });
+          setCurrentTitle(note.title);
+          setOriginalTitle(note.title);
+          setOriginalContent(note.content);
           editor.commands.focus();
         }
       }
     }
   }, [selectedNoteId, notes, editor]);
+
+  // Auto-generate title (first 1-3 characters of the first non-empty line)
+  useEffect(() => {
+    if (!isTitleManual && editor) {
+      console.log('Title useEffect running, isTitleManual:', isTitleManual); // Debug log
+      const html = editor.getHTML();
+      console.log('editor.getHTML:', html); // Debug log
+      if (!html || html.trim() === '<p></p>') {
+        setCurrentTitle('');
+        console.log('setCurrentTitle: (empty)'); // Debug log
+        return;
+      }
+      // Parse HTML to find the first <p> tag
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const paragraphs = doc.querySelectorAll('p');
+      for (const p of paragraphs) {
+        const text = p.textContent?.trim();
+        if (text) {
+          setCurrentTitle(text);
+          console.log('setCurrentTitle:', text); // Debug log
+          return;
+        }
+      }
+      setCurrentTitle('');
+      console.log('setCurrentTitle: (empty)'); // Debug log
+    } else {
+      console.log('Title useEffect skipped, isTitleManual:', isTitleManual); // Debug log
+    }
+  }, [newContent, isTitleManual, editor]);
 
   // Format date
   const formatDate = (dateString: string) => {
@@ -135,8 +169,8 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
   // Add a new note
   const addNote = useCallback(async () => {
     if (!token || !newContent.trim()) return;
-    const words = stripHtml(newContent).trim().split(/\s+/);
-    const title = stripHtml(currentTitle).trim() || words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : '');
+    const title = currentTitle || '';
+    console.log('addNote payload:', { title, content: newContent }); // Debug log
     try {
       const response = await axios.post<Note>(
         'https://localhost:3002/notes',
@@ -158,6 +192,7 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
       alert('Failed to add note');
     }
   }, [token, newContent, currentTitle, notes]);
+
 
   // Reset note state
   const resetNoteState = useCallback(() => {
@@ -197,12 +232,29 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
   const saveEdit = useCallback(async () => {
     if (!token || typeof selectedNoteId !== 'number') return;
     const contentToSave = newContent;
-    const titleToSave = contentToSave === '' ? '' : stripHtml(currentTitle);
+    // Compute title from editor content
+    let titleToSave = '';
+    if (editor) {
+      const html = editor.getHTML();
+      console.log('saveEdit editor.getHTML:', html); // Debug log
+      if (html && html.trim() !== '<p></p>') {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const paragraphs = doc.querySelectorAll('p');
+        for (const p of paragraphs) {
+          const text = p.textContent?.trim();
+          if (text) {
+            titleToSave = text;
+            break;
+          }
+        }
+      }
+    }
+    console.log('saveEdit payload:', { title: titleToSave, content: contentToSave }); // Debug log
     if (contentToSave === '' && tempDeletedNote) {
       setTempDeletedNote(null);
       setSelectedNoteId(null);
       setNewContent('');
-      setCurrentTitle('');
       return;
     }
     try {
@@ -211,19 +263,22 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
         { title: titleToSave, content: contentToSave },
         { headers: { Authorization: token } }
       );
-      const updatedNotes = notes
-        .map((note) => (note.id === selectedNoteId ? response.data : note))
-        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+      console.log('saveEdit response.data:', response.data); // Debug log
+      const updatedNotes = notes.map((note) =>
+        note.id === selectedNoteId
+          ? { ...note, title: titleToSave, content: contentToSave, updated_at: response.data.updated_at }
+          : note
+      ).sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
       setNotes(updatedNotes);
       setOriginalContent(contentToSave);
       setOriginalTitle(titleToSave);
-      setCurrentTitle(titleToSave);
       setTempDeletedNote(null);
+      console.log('saveEdit updated note.title for id', selectedNoteId, ':', titleToSave); // Debug log
     } catch (error) {
       const axiosError = error as AxiosError;
       console.error('Update note error:', axiosError.response?.data || axiosError.message);
     }
-  }, [token, newContent, currentTitle, selectedNoteId, notes, tempDeletedNote]);
+  }, [token, newContent, selectedNoteId, notes, tempDeletedNote, editor]);
 
   // Handle content change
   const handleContentChange = (content: string) => {
@@ -239,18 +294,6 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
     }
   };
 
-  // Auto-generate title
-  useEffect(() => {
-    if (!isTitleManual) {
-      if (newContent.trim() === '') {
-        setCurrentTitle('');
-      } else {
-        const words = stripHtml(newContent).trim().split(/\s+/);
-        setCurrentTitle(words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : ''));
-      }
-    }
-  }, [newContent, isTitleManual]);
-
   // Auto-save after 2 seconds
   useEffect(() => {
     if (!token || !newContent.trim()) return;
@@ -259,10 +302,9 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
         addNote();
       } else if (
         typeof selectedNoteId === 'number' &&
-        (newContent !== originalContent || stripHtml(currentTitle) !== originalTitle)
+        (newContent !== originalContent || currentTitle !== originalTitle)
       ) {
         saveEdit();
-        // Update editor content only if necessary, preserving cursor
         if (editor && editor.getHTML() !== newContent) {
           const { from, to } = editor.state.selection;
           editor.commands.setContent(newContent, false, { preserveWhitespace: 'full' });
@@ -569,7 +611,21 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
           {!filteredNotes.length && !tempDeletedNote && (
             <p className="text-center text-gray-500 mt-10">No notes yet.</p>
           )}
-          {filteredNotes.map((note) => (
+        {filteredNotes.map((note) => {
+          console.log('note.content for id', note.id, ':', note.content); // Debug log
+          // Parse note.content to extract lines
+          let displayContent = '';
+          if (note.content) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(note.content, 'text/html');
+            const paragraphs = doc.querySelectorAll('p');
+            const lines = Array.from(paragraphs)
+              .map((p) => p.textContent?.trim())
+              .filter((text) => text);
+            displayContent = lines.slice(0, 2).join('\n'); // Limit to 2 lines for preview
+          }
+          console.log('note.displayContent for id', note.id, ':', displayContent); // Debug log
+          return (
             <div
               key={note.id}
               className={`note-tile relative w-full h-[120px] bg-[#1F1F1F] p-2 rounded-[15px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] mb-3 cursor-pointer hover:bg-[#383838] transition-all duration-300 ${
@@ -596,11 +652,14 @@ const NotesPage: React.FC<NotesPageProps> = ({ token, setIsTrashView, fetchNotes
               ></div>
               <div className={`transition-all duration-300 ${note.id === selectedNoteId ? 'ml-[7px]' : 'ml-0'}`}>
                 <strong className="text-white note-title">{stripHtml(note.title) || '(Untitled)'}</strong>
-                <p className="text-gray-400 note-content">{stripHtml(note.content)}</p>
+                <p className="text-gray-400 note-content" style={{ whiteSpace: 'pre-line' }}>
+                  {displayContent || '(No content)'}
+                </p>
               </div>
               <span className="absolute bottom-1 right-2 text-[10px] text-gray-500">{formatDate(note.updated_at)}</span>
             </div>
-          ))}
+          );
+        })}
         </div>
         <div className="absolute bottom-[5px] left-0 right-2 h-18 flex items-center justify-end pr-4 z-10 backdrop-blur-sm rounded-[30px]">
           <button

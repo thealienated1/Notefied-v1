@@ -189,14 +189,13 @@ app.delete('/trashed-notes/:id', authMiddleware, async (req, res) => {
 
 // Update an existing note
 app.put('/notes/:id', authMiddleware, [
+  body('title').isLength({ min: 1 }).trim(),
   body('content').isLength({ min: 1 }).trim(),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const noteId = parseInt(req.params.id, 10);
-  const { content } = req.body;
-  const words = content.trim().split(/\s+/);
-  const title = words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : '');
+  const { title, content } = req.body;
   try {
     const result = await pool.query(
       'UPDATE notes SET title = $1, content = $2, updated_at = NOW() WHERE id = $3 AND user_id = $4 RETURNING *',
