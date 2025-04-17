@@ -22,7 +22,7 @@ const App: React.FC = () => {
 
   // Fetch notes
   const fetchNotes = async (): Promise<Note[]> => {
-    if (!token) return [];
+    if (!token) throw new Error('No token');
     try {
       const response = await axios.get<Note[]>('https://localhost:3002/notes', {
         headers: { Authorization: token },
@@ -30,14 +30,16 @@ const App: React.FC = () => {
       return response.data.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
     } catch (error) {
       const axiosError = error as AxiosError;
-      console.error('Fetch notes error:', axiosError.response?.data || axiosError.message);
-      return [];
+      if (axiosError.response?.status === 401) {
+        handleLogout();
+      }
+      throw error;
     }
   };
 
   // Fetch trashed notes
   const fetchTrashedNotes = async (): Promise<TrashedNote[]> => {
-    if (!token) return [];
+    if (!token) throw new Error('No token');
     try {
       const response = await axios.get<TrashedNote[]>('https://localhost:3002/trashed-notes', {
         headers: { Authorization: token },
@@ -45,8 +47,10 @@ const App: React.FC = () => {
       return response.data.sort((a, b) => new Date(b.trashed_at).getTime() - new Date(a.trashed_at).getTime());
     } catch (error) {
       const axiosError = error as AxiosError;
-      console.error('Fetch trashed notes error:', axiosError.response?.data || axiosError.message);
-      return [];
+      if (axiosError.response?.status === 401) {
+        handleLogout();
+      }
+      throw error;
     }
   };
 
@@ -94,6 +98,7 @@ const App: React.FC = () => {
                 setIsTrashView={setIsTrashView}
                 fetchNotes={fetchNotes}
                 fetchTrashedNotes={fetchTrashedNotes}
+                handleLogout={handleLogout}
               />
             ) : (
               <NotesPage
@@ -101,6 +106,7 @@ const App: React.FC = () => {
                 setIsTrashView={setIsTrashView}
                 fetchNotes={fetchNotes}
                 fetchTrashedNotes={fetchTrashedNotes}
+                handleLogout={handleLogout}
               />
             )}
           </div>
