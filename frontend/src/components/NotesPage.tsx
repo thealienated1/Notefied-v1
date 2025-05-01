@@ -18,6 +18,10 @@ import remixiconUrl from 'remixicon/fonts/remixicon.symbol.svg';
 import striptags from 'striptags';
 import { debounce } from 'lodash';
 
+interface ApiErrorResponse {
+  error?: string;
+  details?: string;
+}
 // Utility function to strip HTML tags
 const stripHtml = (html: string): string => striptags(html);
 
@@ -324,23 +328,25 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
   const addNote = useCallback(async () => {
     if (!token || !state.newContent.trim()) return;
     try {
+      console.log('Adding note:', { title: state.currentTitle, content: state.newContent }); // Debug
       const response = await axios.post<Note>(
-        'https://localhost:3002/notes',
-        { title: state.currentTitle, content: state.newContent },
-        { headers: { Authorization: token } }
+        '/api/notes/notes', // Fixed endpoint
+        { title: state.currentTitle || 'Untitled', content: state.newContent }, // Ensure title
+        { headers: { Authorization: `Bearer ${token}` } } // Fixed header
       );
+      console.log('Note added:', response.data); // Debug
       dispatch({
         type: 'SET_NOTES',
         payload: [response.data, ...state.notes].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
       });
       dispatch({ type: 'SELECT_NOTE', payload: { id: response.data.id, content: state.newContent, title: response.data.title } });
     } catch (error) {
-      const axiosError = error as AxiosError;
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      console.error('Add note error:', axiosError.response?.data || axiosError.message); // Debug
       if (axiosError.response?.status === 401) {
         handleLogout();
       } else {
-        console.error('Add note error:', axiosError.message);
-        alert('Failed to add note');
+        alert(`Failed to add note: ${axiosError.response?.data?.error || axiosError.message}`);
       }
     }
   }, [token, state.newContent, state.currentTitle, state.notes, handleLogout]);
@@ -357,17 +363,19 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
     async (id: number) => {
       if (!token) return;
       try {
-        await axios.delete(`https://localhost:3002/notes/${id}`, { headers: { Authorization: token } });
+        console.log('Deleting note:', id); // Debug
+        await axios.delete(`/api/notes/notes/${id}`, { headers: { Authorization: `Bearer ${token}` } }); // Fixed endpoint
+        console.log('Note deleted:', id); // Debug
         dispatch({ type: 'SET_NOTES', payload: state.notes.filter(note => note.id !== id) });
         await fetchTrashedNotes();
         if (state.selectedNoteId === id) resetNoteState();
       } catch (error) {
-        const axiosError = error as AxiosError;
+        const axiosError = error as AxiosError<ApiErrorResponse>;
+        console.error('Delete note error:', axiosError.response?.data || axiosError.message); // Debug
         if (axiosError.response?.status === 401) {
           handleLogout();
         } else {
-          console.error('Delete note error:', axiosError.message);
-          alert('Failed to move note to trash');
+          alert(`Failed to move note to trash: ${axiosError.response?.data?.error || axiosError.message}`);
           await fetchNotes().then(notes => dispatch({ type: 'SET_NOTES', payload: notes }));
           await fetchTrashedNotes();
         }
@@ -380,17 +388,19 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
   const saveEdit = useCallback(async () => {
     if (!token || typeof state.selectedNoteId !== 'number') return;
     const contentToSave = state.newContent;
-    const titleToSave = state.currentTitle || generateTitle(contentToSave);
+    const titleToSave = state.currentTitle || generateTitle(contentToSave) || 'Untitled';
     if (contentToSave === '' && state.tempDeletedNote) {
       dispatch({ type: 'RESET' });
       return;
     }
     try {
+      console.log('Saving edit:', { id: state.selectedNoteId, title: titleToSave, content: contentToSave }); // Debug
       const response = await axios.put<Note>(
-        `https://localhost:3002/notes/${state.selectedNoteId}`,
+        `/api/notes/notes/${state.selectedNoteId}`, // Fixed endpoint
         { title: titleToSave, content: contentToSave },
-        { headers: { Authorization: token } }
+        { headers: { Authorization: `Bearer ${token}` } } // Correct header
       );
+      console.log('Note updated:', response.data); // Debug
       dispatch({
         type: 'SET_NOTES',
         payload: state.notes
@@ -403,31 +413,15 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
       });
       dispatch({ type: 'SELECT_NOTE', payload: { id: state.selectedNoteId, content: contentToSave, title: titleToSave } });
     } catch (error) {
-      const axiosError = error as AxiosError;
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      console.error('Update note error:', axiosError.response?.data || axiosError.message); // Debug
       if (axiosError.response?.status === 401) {
         handleLogout();
       } else {
-        console.error('Update note error:', axiosError.message);
+        alert(`Failed to update note: ${axiosError.response?.data?.error || axiosError.message}`);
       }
     }
   }, [token, state.selectedNoteId, state.newContent, state.currentTitle, state.notes, state.tempDeletedNote, generateTitle, handleLogout]);
-
-  // Handle content change
-  const handleContentChange = useCallback(
-    (content: string) => {
-      if (content.trim() === '' && typeof state.selectedNoteId === 'number' && !state.tempDeletedNote) {
-        const noteToDelete = state.notes.find(note => note.id === state.selectedNoteId);
-        if (noteToDelete) {
-          dispatch({ type: 'UPDATE_CONTENT', payload: { content, tempDeletedNote: noteToDelete } });
-          dispatch({ type: 'SET_NOTES', payload: state.notes.filter(note => note.id !== state.selectedNoteId) });
-          dispatch({ type: 'SELECT_NOTE', payload: { id: null, content: '', title: '' } });
-        }
-      } else if (content.trim() !== '' && state.tempDeletedNote) {
-        dispatch({ type: 'UPDATE_CONTENT', payload: { content, tempDeletedNote: null } });
-      }
-    },
-    [state.selectedNoteId, state.tempDeletedNote, state.notes]
-  );
 
   // Debounced auto-save
   const debouncedSave = React.useMemo(
@@ -472,7 +466,7 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
         const containerRect = containerRef.current.getBoundingClientRect();
         const styles = window.getComputedStyle(containerRef.current);
         const paddingRight = parseFloat(styles.paddingRight) || 0;
-        const paddingBottom = parseFloat(styles.paddingBottom) || 0;
+
         const taskbarWidth = 540;
         const boundaryOffset = 5;
         setTaskbarPosition({
@@ -760,7 +754,7 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
           .context-menu-button.delete { color: #f87171; }
         `}
       </style>
-      <div className="w-[300px] flex flex-col flex-shrink-0 h-full relative">
+      <div className="w-[18%] flex flex-col flex-shrink-0 h-full relative">
         <div className="flex-shrink-0">
           <input
             type="text"
@@ -793,7 +787,7 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
         </div>
       </div>
       <div className="flex-1 flex flex-col ml-[5px]">
-        <div className="h-[55px] w-full flex-shrink-0"></div>
+        <div className="h-[7%] w-full flex-shrink-0"></div>
         <div ref={containerRef} className="flex-1 editor-container">
           <EditorContent editor={editor} className="editor-input" onClick={() => editor?.commands.focus()} />
           <div

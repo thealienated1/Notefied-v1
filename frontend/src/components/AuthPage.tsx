@@ -19,17 +19,19 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
 
   const login = async () => {
     try {
+      console.log('Login request:', { username, password }); // Debug
       const response = await axios.post<{ token: string }>(
-        'https://localhost:3001/login',
+        '/api/users/login',
         { username, password },
         { headers: { 'Content-Type': 'application/json' } }
       );
+      console.log('Login successful:', response.data); // Debug
       onLogin(response.data.token);
       setLoginError('');
     } catch (error) {
-      const axiosError = error as AxiosError;
+      const axiosError = error as AxiosError<ErrorResponse>;
       console.error('Login failed:', axiosError.response?.data || axiosError.message);
-      setLoginError('Incorrect Username or Password');
+      setLoginError(axiosError.response?.data?.error || 'Incorrect Username or Password');
     }
   };
 
@@ -39,11 +41,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       return;
     }
     try {
+      console.log('Register request:', { username, password }); // Debug
       const response = await axios.post(
-        'https://localhost:3001/register',
+        '/api/users/register', // Fixed endpoint
         { username, password },
         { headers: { 'Content-Type': 'application/json' } }
       );
+      console.log('Register successful:', response.data); // Debug
       if (response.status === 201) {
         setRegisterError('');
         setIsRegistering(false);
@@ -65,8 +69,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
 
   return (
     <div className="flex-1 flex justify-center items-center px-4 overflow-hidden">
-      <div className="w-[440px] h-[536px] bg-[#242424] rounded-[20px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] flex justify-center items-center">
-        <div className="w-[400px] h-[500px] bg-[#191919] rounded-[20px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] p-6 flex flex-col">
+      <div className="w-[25%] h-[55%] bg-[#242424] rounded-[5%] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] flex justify-center items-center">
+        <div className="w-[90%] h-[90%] bg-[#191919] rounded-[5%] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] p-6 flex flex-col">
           <h2 className="text-2xl font-small text-white mb-6 text-center">
             {isRegistering ? 'Sign-up' : 'Sign-in'}
           </h2>
@@ -102,7 +106,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                   onFocus={() => setRegisterError('')}
                 />
                 {registerError && (
-                  <div className="absolute left-0 bottom-[-20px] text-red-500 text-[10px]">{registerError}</div>
+                  <div className="absolute left-0 ml-[5%] bottom-[-20px] text-red-500 text-[10px]">{registerError}</div>
                 )}
               </div>
             </>
@@ -121,16 +125,15 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                   }}
                 />
                 {loginError && (
-                  <div className="absolute left-0 bottom-[-20px] text-red-500 text-[10px]">{loginError}</div>
+                  <div className="absolute left-0 ml-[5%] mb-[5%] bottom-[-90%] text-red-500 text-[65%]">{loginError}</div>
                 )}
               </div>
-              <div className="text-center text-sm text-gray-400 mb-6">Forgot password?</div>
             </>
           )}
-          <div className="flex justify-center mb-6">
+          <div className="flex justify-center mb-10">
             <button
               onClick={isRegistering ? register : login}
-              className="w-[100px] h-[30px] bg-[#0072DB] text-white rounded-[30px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] hover:bg-blue-700 text-xs mt-2"
+              className="w-[25%] h-[150%] bg-[#0072DB] text-white rounded-[20px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] hover:bg-blue-700 text-xs mt-2"
             >
               {isRegistering ? 'Sign Up' : 'Sign In'}
             </button>
@@ -166,11 +169,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               </>
             )}
           </div>
-          <div className="text-center text-sm text-gray-400 mb-6">or</div>
           <div className="flex justify-center space-x-5">
-            <button className="w-10 h-10 rounded-full border border-gray-600 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)]"></button>
-            <button className="w-10 h-10 rounded-full border border-gray-600 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)]"></button>
-            <button className="w-10 h-10 rounded-full border border-gray-600 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)]"></button>
+            <button className="w-10 h-10 rounded-full"></button>
+            <button className="w-10 h-10 rounded-full"></button>
+            <button className="w-10 h-10 rounded-full"></button>
           </div>
         </div>
       </div>

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios, { AxiosError } from 'axios';
 import BackIcon from './assets/icons/back.svg';
 
-
 interface TrashedNote {
   id: number;
   user_id: number;
@@ -20,14 +19,27 @@ interface Note {
   updated_at: string;
 }
 
+interface ApiErrorResponse {
+  error?: string;
+  details?: string;
+}
+
 interface BinPageProps {
   token: string;
   setIsTrashView: React.Dispatch<React.SetStateAction<boolean>>;
   fetchNotes: () => Promise<Note[]>;
   fetchTrashedNotes: () => Promise<TrashedNote[]>;
+  handleLogout: () => void;
 }
 
-const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fetchTrashedNotes }) => {
+// Utility function to strip HTML tags
+const stripHtml = (html: string): string => {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || div.innerText || '';
+};
+
+const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fetchTrashedNotes, handleLogout }) => {
   const [trashedNotes, setTrashedNotes] = useState<TrashedNote[]>([]);
   const [selectedTrashedNotes, setSelectedTrashedNotes] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -49,8 +61,8 @@ const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fe
   const filteredTrashedNotes = trashedNotes
     .filter(
       (note) =>
-        note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        note.content.toLowerCase().includes(searchQuery.toLowerCase())
+        stripHtml(note.title).toLowerCase().includes(searchQuery.toLowerCase()) ||
+        stripHtml(note.content).toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => new Date(b.trashed_at).getTime() - new Date(a.trashed_at).getTime());
 
@@ -64,16 +76,22 @@ const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fe
 
   const restoreNote = async (id: number): Promise<Note | null> => {
     try {
+      console.log('Restoring note:', id); // Debug
       const response = await axios.post<Note>(
-        `https://localhost:3002/trashed-notes/${id}/restore`,
+        `/api/notes/trashed-notes/${id}/restore`,
         {},
-        { headers: { Authorization: token } }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
+      console.log('Note restored:', response.data); // Debug
       return response.data;
     } catch (error) {
-      const axiosError = error as AxiosError;
+      const axiosError = error as AxiosError<ApiErrorResponse>;
       console.error('Restore note error:', axiosError.response?.data || axiosError.message);
-      alert('Failed to restore note');
+      if (axiosError.response?.status === 401) {
+        handleLogout();
+      } else {
+        alert(`Failed to restore note: ${axiosError.response?.data?.error || axiosError.message}`);
+      }
       await fetchNotes();
       await fetchTrashedNotes();
       return null;
@@ -83,19 +101,21 @@ const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fe
   const executePermanentDeletion = async () => {
     if (!token || notesToDeletePermanently.length === 0) return;
     try {
+      console.log('Permanently deleting notes:', notesToDeletePermanently); // Debug
       await Promise.all(
         notesToDeletePermanently.map((id) =>
-          axios.delete(`https://localhost:3002/trashed-notes/${id}`, {
-            headers: { Authorization: token },
+          axios.delete(`/api/notes/trashed-notes/${id}`, {
+            headers: { Authorization: `Bearer ${token}` },
           })
         )
       );
+      console.log('Notes permanently deleted:', notesToDeletePermanently); // Debug
       setTrashedNotes((prev) => prev.filter((note) => !notesToDeletePermanently.includes(note.id)));
       setSelectedTrashedNotes((prev) => prev.filter((id) => !notesToDeletePermanently.includes(id)));
     } catch (error) {
-      const axiosError = error as AxiosError;
+      const axiosError = error as AxiosError<ApiErrorResponse>;
       console.error('Permanent delete error:', axiosError.response?.data || axiosError.message);
-      alert('Failed to permanently delete notes');
+      alert(`Failed to permanently delete notes: ${axiosError.response?.data?.error || axiosError.message}`);
       await fetchTrashedNotes().then(setTrashedNotes);
     }
   };
@@ -211,8 +231,8 @@ const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fe
             >
               <div className="ring absolute top-4 right-4 w-[10px] h-[10px] rounded-full"></div>
               <div className="ml-[7px]">
-                <strong className="text-white text-sm">{note.title}</strong>
-                <p className="text-gray-400 text-xs note-content">{note.content}</p>
+                <strong className="text-white text-sm">{stripHtml(note.title)}</strong>
+                <p className="text-gray-400 text-xs note-content">{stripHtml(note.content)}</p>
               </div>
               <span className="absolute bottom-1 right-2 text-[10px] text-gray-500">
                 Trashed: {formatDate(note.trashed_at)}

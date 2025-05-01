@@ -24,7 +24,7 @@ const App: React.FC = () => {
   const fetchNotes = async (): Promise<Note[]> => {
     if (!token) throw new Error('No token');
     try {
-      const response = await axios.get<Note[]>('https://localhost:3002/notes', {
+      const response = await axios.get<Note[]>('/api/notes/notes', {
         headers: { Authorization: token },
       });
       return response.data.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
@@ -41,7 +41,7 @@ const App: React.FC = () => {
   const fetchTrashedNotes = async (): Promise<TrashedNote[]> => {
     if (!token) throw new Error('No token');
     try {
-      const response = await axios.get<TrashedNote[]>('https://localhost:3002/trashed-notes', {
+      const response = await axios.get<TrashedNote[]>('/api/notes/trashed-notes', {
         headers: { Authorization: token },
       });
       return response.data.sort((a, b) => new Date(b.trashed_at).getTime() - new Date(a.trashed_at).getTime());
