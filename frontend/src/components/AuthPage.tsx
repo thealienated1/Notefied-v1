@@ -166,12 +166,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               </>
             )}
           </div>
-          <div className="text-center text-sm text-gray-400 mb-6">or</div>
-          <div className="flex justify-center space-x-5">
-            <button className="w-10 h-10 rounded-full border border-gray-600 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)]"></button>
-            <button className="w-10 h-10 rounded-full border border-gray-600 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)]"></button>
-            <button className="w-10 h-10 rounded-full border border-gray-600 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)]"></button>
-          </div>
         </div>
       </div>
     </div>

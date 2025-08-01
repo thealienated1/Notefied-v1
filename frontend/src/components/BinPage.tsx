@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios, { AxiosError } from 'axios';
 import BackIcon from './assets/icons/back.svg';
+import striptags from 'striptags';
 
 
 interface TrashedNote {
@@ -27,6 +28,21 @@ interface BinPageProps {
   fetchTrashedNotes: () => Promise<TrashedNote[]>;
 }
 
+const stripHtml = (html: string): string => striptags(html);
+
+const parseNoteContent = (content: string): string => {
+  if (!content) return '(No content)';
+  try {
+    const doc = new DOMParser().parseFromString(content, 'text/html');
+    const paragraphs = Array.from(doc.querySelectorAll('p'))
+      .map(p => p.textContent?.trim())
+      .filter(Boolean);
+    return paragraphs.slice(0, 2).join('\n') || '(No content)';
+  } catch {
+    return '(Invalid content)';
+  }
+};
+
 const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fetchTrashedNotes }) => {
   const [trashedNotes, setTrashedNotes] = useState<TrashedNote[]>([]);
   const [selectedTrashedNotes, setSelectedTrashedNotes] = useState<number[]>([]);
@@ -46,13 +62,22 @@ const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fe
     return `${time}, ${dateStr}`;
   };
 
-  const filteredTrashedNotes = trashedNotes
-    .filter(
-      (note) =>
-        note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        note.content.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-    .sort((a, b) => new Date(b.trashed_at).getTime() - new Date(a.trashed_at).getTime());
+  const searchableTrashedNotes = React.useMemo(
+    () =>
+      trashedNotes.map(note => ({
+        ...note,
+        searchTitle: stripHtml(note.title).toLowerCase(),
+        searchContent: stripHtml(note.content).toLowerCase(),
+      })),
+    [trashedNotes]
+  );
+
+  const filteredTrashedNotes = React.useMemo(() => {
+    const query = searchQuery.toLowerCase();
+    return searchableTrashedNotes
+      .filter(note => note.searchTitle.includes(query) || note.searchContent.includes(query))
+      .sort((a, b) => new Date(b.trashed_at).getTime() - new Date(a.trashed_at).getTime());
+  }, [searchableTrashedNotes, searchQuery]);
 
   const handleSelectAll = useCallback(() => {
     if (selectedTrashedNotes.length === filteredTrashedNotes.length && filteredTrashedNotes.length > 0) {
@@ -120,7 +145,7 @@ const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fe
   };
 
   return (
-    <div className="w-full max-w-[1640px] h-full flex flex-col items-center relative" onClick={() => setContextMenu(null)}>
+    <div className="w-full max-w-full h-full flex flex-col items-center relative" onClick={() => setContextMenu(null)}>
       <style>
         {`
           .custom-scrollbar::-webkit-scrollbar { width: 8px; }
@@ -131,10 +156,28 @@ const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fe
           .note-tile .ring { display: none; outline: 2px solid #f6f6f6; }
           .note-tile:hover .ring, .note-tile.selected .ring { outline: 1px solid #fefefe; display: block; }
           .note-tile.selected .ring { background-color: #5062e7; }
-          .note-content { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; max-height: 3em; }
+          .note-title {
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-height: 1.5em;
+            font-size: 14px;
+          }
+          .note-content {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-height: 4.5em;
+            white-space: pre-line;
+            font-size: 12px;
+          }
         `}
       </style>
-      <div className="absolute left-[40px] bg-transparent top-4">
+      <div className="absolute left-[2vw] bg-transparent top-[2vh]">
         <button
           onClick={() => {
             setIsTrashView(false);
@@ -146,10 +189,10 @@ const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fe
           <img src={BackIcon} alt="Back" className="w-7 h-7 hover:w-8 hover:h-8 transition-all" />
         </button>
       </div>
-      <div className="absolute left-[120px] top-5">
+      <div className="absolute left-[8vw] top-[2vh]">
         <h2 className="text-white text-[24px] font-bold">Bin</h2>
       </div>
-      <div className="absolute left-[110px] top-[52px] flex items-center space-x-6 mt-5">
+      <div className="absolute left-[8vw] top-[6vh] flex items-center space-x-6 mt-5">
         <button
           onClick={handleSelectAll}
           className="w-[65px] h-[45px] bg-transparent text-white text-[12px] rounded-[25px] mr-10 hover:text-[13px]"
@@ -191,15 +234,15 @@ const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fe
           className="h-[35px] w-[300px] bg-[#252525] text-white text-[12px] px-4 rounded-[20px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] focus:outline-none focus:ring-[0.5px] focus:ring-[#5062E7] mt-4"
         />
       </div>
-      <div className="absolute left-[100px] top-[107px] w-[calc(100%-120px)] h-[calc(100%-127px)] overflow-y-auto custom-scrollbar">
-        <div className="flex flex-wrap gap-x-20 gap-y-[80px] mt-10">
+      <div className="absolute left-[5vw] top-[15vh] w-[90vw] h-[calc(100%-20vh)] overflow-y-auto custom-scrollbar">
+        <div className="flex flex-wrap gap-x-[2vw] gap-y-[2vh] mt-10">
           {!filteredTrashedNotes.length && (
             <p className="w-full text-center text-gray-500">Trash is empty.</p>
           )}
           {filteredTrashedNotes.map((note) => (
             <div
               key={note.id}
-              className={`note-tile relative w-[300px] h-[120px] bg-[#1F1F1F] p-2 rounded-[15px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] cursor-pointer hover:bg-[#383838] transition-all duration-300 outline-none ${
+              className={`note-tile relative w-[20vw] h-[15vh] bg-[#1F1F1F] p-2 rounded-[15px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] cursor-pointer hover:bg-[#383838] transition-all duration-300 outline-none ${
                 selectedTrashedNotes.includes(note.id) ? 'selected' : ''
               }`}
               onClick={() =>
@@ -211,8 +254,8 @@ const BinPage: React.FC<BinPageProps> = ({ token, setIsTrashView, fetchNotes, fe
             >
               <div className="ring absolute top-4 right-4 w-[10px] h-[10px] rounded-full"></div>
               <div className="ml-[7px]">
-                <strong className="text-white text-sm">{note.title}</strong>
-                <p className="text-gray-400 text-xs note-content">{note.content}</p>
+                <strong className="text-white note-title">{stripHtml(note.title) || '(Untitled)'}</strong>
+                <p className="text-gray-400 note-content">{parseNoteContent(note.content)}</p>
               </div>
               <span className="absolute bottom-1 right-2 text-[10px] text-gray-500">
                 Trashed: {formatDate(note.trashed_at)}

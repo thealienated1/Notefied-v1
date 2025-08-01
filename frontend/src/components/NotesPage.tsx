@@ -133,7 +133,7 @@ interface NoteTileProps {
 const NoteTile = memo(({ note, isSelected, onSelect, onContextMenu, formatDate }: NoteTileProps) => {
   return (
     <div
-      className={`note-tile relative w-full h-[120px] bg-[#1F1F1F] p-2 rounded-[15px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] mb-3 cursor-pointer hover:bg-[#383838] ${
+      className={`note-tile relative w-full h-[15vh] bg-[#1F1F1F] p-2 rounded-[15px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.4)] mb-3 cursor-pointer hover:bg-[#383838] ${
         isSelected ? 'bg-[#2a2a2a]' : ''
       }`}
       onClick={e => {
@@ -412,23 +412,6 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
     }
   }, [token, state.selectedNoteId, state.newContent, state.currentTitle, state.notes, state.tempDeletedNote, generateTitle, handleLogout]);
 
-  // Handle content change
-  const handleContentChange = useCallback(
-    (content: string) => {
-      if (content.trim() === '' && typeof state.selectedNoteId === 'number' && !state.tempDeletedNote) {
-        const noteToDelete = state.notes.find(note => note.id === state.selectedNoteId);
-        if (noteToDelete) {
-          dispatch({ type: 'UPDATE_CONTENT', payload: { content, tempDeletedNote: noteToDelete } });
-          dispatch({ type: 'SET_NOTES', payload: state.notes.filter(note => note.id !== state.selectedNoteId) });
-          dispatch({ type: 'SELECT_NOTE', payload: { id: null, content: '', title: '' } });
-        }
-      } else if (content.trim() !== '' && state.tempDeletedNote) {
-        dispatch({ type: 'UPDATE_CONTENT', payload: { content, tempDeletedNote: null } });
-      }
-    },
-    [state.selectedNoteId, state.tempDeletedNote, state.notes]
-  );
-
   // Debounced auto-save
   const debouncedSave = React.useMemo(
     () =>
@@ -472,8 +455,7 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
         const containerRect = containerRef.current.getBoundingClientRect();
         const styles = window.getComputedStyle(containerRef.current);
         const paddingRight = parseFloat(styles.paddingRight) || 0;
-        const paddingBottom = parseFloat(styles.paddingBottom) || 0;
-        const taskbarWidth = 540;
+        const taskbarWidth = containerRect.width * 0.34; // 80% of editor container width
         const boundaryOffset = 5;
         setTaskbarPosition({
           x: Math.max(boundaryOffset, containerRect.width - taskbarWidth - paddingRight - boundaryOffset),
@@ -504,7 +486,7 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
         const styles = window.getComputedStyle(containerRef.current);
         const paddingRight = parseFloat(styles.paddingRight) || 0;
         const paddingBottom = parseFloat(styles.paddingBottom) || 0;
-        const taskbarWidth = 540;
+        const taskbarWidth = containerRect.width * 0.34; // 80% of editor container width
         const taskbarHeight = 32;
         const boundaryOffset = 10;
         setTaskbarPosition({
@@ -606,7 +588,7 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
   );
 
   return (
-    <div className="flex w-full max-w-[1640px] h-full" onClick={() => setContextMenu(null)}>
+    <div className="flex w-full max-w-full h-full" onClick={() => setContextMenu(null)}>
       <style>
         {`
           .custom-scrollbar::-webkit-scrollbar { width: 8px; }
@@ -682,7 +664,7 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
           }
           .taskbar {
             position: absolute;
-            width: 540px;
+            width: 34%;
             height: 32px;
             border-radius: 15px;
             background-color: #252525;
@@ -760,7 +742,7 @@ const NotesPage: React.FC<NotesPageProps> = memo(({ token, setIsTrashView, fetch
           .context-menu-button.delete { color: #f87171; }
         `}
       </style>
-      <div className="w-[300px] flex flex-col flex-shrink-0 h-full relative">
+      <div className="w-[20%] flex flex-col flex-shrink-0 h-full relative">
         <div className="flex-shrink-0">
           <input
             type="text"
